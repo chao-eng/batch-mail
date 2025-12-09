@@ -77,7 +77,7 @@ module.exports = {
   packagerConfig: {
     name: "BatchMail",
     appCopyright: "Copyright (C) 2025",
-    icon: "./setup/exe.ico",
+    icon: "./setup/icons/icon",
     // ElectronForge默认会将项目根目录下的所有文件及目录打包到resources
     // 因此需要在这里忽略不需要打入到安装包的文件和目录
     // 对于node_modules目录，只会打包dependencies依赖项
