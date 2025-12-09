@@ -27,28 +27,42 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # 推荐使用 20 (LTS) 或 22
+          node-version: 20
           cache: 'yarn'
 
       # 3. 安装依赖
-      # 使用 --frozen-lockfile 确保安装版本与 yarn.lock 完全一致
+      # 结合之前的 ffmpeg 问题，建议保留手动下载 electron 的步骤
       - name: Install Dependencies
-        run: yarn install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 0
+        run: |
+          yarn install --frozen-lockfile
+          # 强制运行 electron 下载脚本，防止 ffmpeg.dll 丢失
+          node node_modules/electron/install.js
 
-      # 4. 执行打包命令
-      # ⚠️ 重点修改：这里执行 package.json 中的 "build" 脚本
-      # 在 Mac 机器上，它会执行 node scripts/build.mjs && electron-forge make (生成 dmg/zip)
-      # 在 Win 机器上，它会执行 node scripts/build.mjs && electron-forge make (生成 exe/zip)
-      - name: Build / Make
-        run: yarn build
+      # 4. 执行打包命令 (重点修改部分)
+      
+      # [Mac] 仅在 macOS 环境下运行 yarn build:mac
+      - name: Build for macOS
+        if: matrix.os == 'macos-latest'
+        run: yarn build:mac
+
+      # [Windows] 仅在 Windows 环境下运行，依次执行 win64 和 win32 打包
+      # 注意：这假设你的 build.mjs 脚本不会在每次运行时强制清空整个 out 目录，
+      # 否则 win32 的构建可能会把 win64 的产物删掉。
+      - name: Build for Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          yarn build:win64
+          yarn build:win32
 
       # 5. 发布并上传文件
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          # 自动匹配 out 文件夹下的产物
-          # 如果你的 electron-forge 配置修改了输出目录，请同步修改这里
+          # 请注意检查你的 makensis 生成的 exe 是否也在 out 目录下
+          # 如果不是，请手动添加路径，例如: setup/Output/*.exe
           files: |
             out/**/*.exe
             out/**/*.dmg
