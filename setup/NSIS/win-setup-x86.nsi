@@ -17,7 +17,7 @@ SetCompressor LZMA
 Unicode True
 
 Name "${PRODUCT_NAME}"
-OutFile "${PRODUCT_NAME}-Setup-x86.exe"
+OutFile "..\..\out\${PRODUCT_NAME}-Setup-x86.exe"
 InstallDir "$LocalAppdata\Programs\${PRODUCT_NAME}"
 ShowInstDetails hide
 ShowUnInstDetails hide
@@ -27,8 +27,8 @@ BrandingText "${REG_ORGANIZATION_NAME}"
 # RequestExecutionLevel none|user|highest|admin
 RequestExecutionLevel user
 
-!define MUI_ICON              ".\install.ico"
-!define MUI_UNICON            ".\install.ico"
+!define MUI_ICON              "..\icons\icon.ico"
+!define MUI_UNICON            "..\icons\icon.ico"
 !define MUI_CUSTOMFUNCTION_GUIINIT onGUIInit
 
 !insertmacro MUI_PAGE_WELCOME
