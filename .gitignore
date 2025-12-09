@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+out
+.vscode
+.idea
+*.exe
+nsis-3.08/
+.idea

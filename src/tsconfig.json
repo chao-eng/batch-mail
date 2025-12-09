@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2015",
+    "module": "commonjs",
+    "allowJs": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "outDir": "../build",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "baseUrl": "./",
+    "paths": {
+      "@utils/*": ["src/lib/utils/*"],
+      "@lib/*": ["src/lib/*"],
+      "@file-download/*": ["src/file-download/*"]
+    }
+  },
+  "exclude": ["renderer"]
+}
