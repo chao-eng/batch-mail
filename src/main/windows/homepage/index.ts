@@ -97,7 +97,7 @@ class homepageWindow extends WindowBase {
     //发送邮件
     this.registerIpcHandleHandler('sendMail', async (event, params) => {
       console.log('发送邮件:', params)
-      const { smtp_server, smtp_port, sender_email, password, to, subject, text, attachments } = params;
+      const { smtp_server, smtp_port, sender_email, password, to, subject, text, html, attachments } = params;
 
       // 1. 创建 Transporter
       const transporter = nodemailer.createTransport({
@@ -116,9 +116,9 @@ class homepageWindow extends WindowBase {
           from: sender_email,
           to: to,
           subject: subject,
-          // text: text, // 纯文本
+          text: text, // 纯文本
           attachments: attachments, // 附件数组
-          html: text // 如果你想支持 html，可以用这个字段
+          html: html || text // 优先使用 html，兼容旧代码
         });
 
         return { status: true, msg: '发送成功', id: info.messageId };

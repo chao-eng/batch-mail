@@ -1,6 +1,6 @@
 {
   "name": "batch-mail",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "productName": "BatchMail",
   "description": "批量邮件发送工具.",
   "author": {
@@ -31,6 +31,7 @@
     "electron-store": "^11.0.2",
     "nodemailer": "^7.0.11",
     "uuid": "^9.0.1",
+    "vditor": "^3.11.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

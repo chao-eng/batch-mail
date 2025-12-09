@@ -32,7 +32,7 @@
       <a-layout-content style="margin: 24px 16px">
         <div style="padding: 24px; background: #fff; min-height: 360px; border-radius: 8px;">
           
-          <div v-if="selectedKeys[0] === 'config'">
+          <div v-show="selectedKeys[0] === 'config'">
             <a-typography-title :level="4">SMTP 服务器配置</a-typography-title>
             <a-divider />
             <a-form 
@@ -70,7 +70,7 @@
             </a-form>
           </div>
 
-          <div v-else-if="selectedKeys[0] === 'send'">
+          <div v-show="selectedKeys[0] === 'send'">
              <a-typography-title :level="4">撰写新邮件</a-typography-title>
              <a-divider />
              <a-form layout="vertical" :model="mailForm">
@@ -81,7 +81,7 @@
                  <a-input v-model:value="mailForm.subject" placeholder="请输入邮件主题" />
                </a-form-item>
                <a-form-item label="邮件内容">
-                 <a-textarea v-model:value="mailForm.content" placeholder="在此输入邮件正文..." :rows="8" />
+                 <div id="vditor"></div>
                </a-form-item>
                <a-form-item label="附件">
                  <a-upload
@@ -107,7 +107,7 @@
              </a-form>
           </div>
 
-          <div v-else-if="selectedKeys[0] === 'batch'">
+          <div v-show="selectedKeys[0] === 'batch'">
             <div style="display: flex; justify-content: space-between; align-items: center;">
             <a-typography-title :level="4" style="margin: 0;"></a-typography-title>
             
@@ -194,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted,onUnmounted } from 'vue';
+import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { message } from 'ant-design-vue';
 import type { UploadProps } from 'ant-design-vue';
 import { 
@@ -210,6 +210,8 @@ import {
   PaperClipOutlined
 } from '@ant-design/icons-vue';
 import utils from "@utils/renderer";
+import Vditor from 'vditor';
+import 'vditor/dist/index.css';
 
 const openGithub = () => {
   utils.openExternalLink("https://github.com/chao-eng/batch-mail");
@@ -258,6 +260,9 @@ const formConfig = reactive({
 // 新增：测试连接的 loading 状态
 const testingConfig = ref(false);
 
+// Vditor 实例
+const vditor = ref<Vditor | null>(null);
+
 // 初始化读取配置
 onMounted(async () => {
   try {
@@ -271,6 +276,34 @@ onMounted(async () => {
     }
   } catch (err) {
     console.error("读取配置失败", err);
+  }
+
+  // 初始化 Vditor
+  vditor.value = new Vditor('vditor', {
+    height: 400,
+    toolbarConfig: {
+      pin: true,
+    },
+    cache: {
+      enable: false,
+    },
+    after: () => {
+      // vditor.value!.setValue(mailForm.content);
+    },
+  });
+});
+
+// 监听 tab 切换，如果是 send 页面，刷新 vditor 布局
+watch(() => selectedKeys.value, (newVal) => {
+  if (newVal[0] === 'send' && vditor.value) {
+    // 等待 v-show 切换完成
+    nextTick(() => {
+      // 这里的 setValue 是为了触发一次重绘或者确保内容正确显示，
+      // 但实际上 vditor 应该能保持状态。
+      // 如果遇到显示问题，可以尝试 focus 或者 resize (如果 API 支持)
+      // Vditor 没有公开的 resize 方法，但通常 focus 或者 setValue 可以触发刷新
+      // 这里暂时不做特殊处理，通常 v-show 切换回来内容还在
+    });
   }
 });
 
@@ -333,6 +366,9 @@ const clearMailForm = () => {
   mailForm.subject = "";
   mailForm.content = "";
   mailForm.fileList = [];
+  if (vditor.value) {
+    vditor.value.setValue("");
+  }
 };
 
 const beforeUploadAttachment = (file: any) => {
@@ -362,6 +398,9 @@ const handleSendMail = async () => {
       path: file.path // Electron 环境下 File 对象通常包含 path 属性
     }));
 
+    // 获取 Vditor 的 HTML 内容
+    const htmlContent = vditor.value ? vditor.value.getHTML() : "";
+
     const payload = {
       smtp_server: formConfig.smtp_server,
       smtp_port: formConfig.smtp_port,
@@ -369,7 +408,7 @@ const handleSendMail = async () => {
       password: formConfig.password,
       to: mailForm.receiver,
       subject: mailForm.subject,
-      text: mailForm.content,
+      html: htmlContent, // 使用 html 字段
       attachments: attachments
     };
 
