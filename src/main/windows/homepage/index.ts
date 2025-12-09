@@ -116,9 +116,9 @@ class homepageWindow extends WindowBase {
           from: sender_email,
           to: to,
           subject: subject,
-          text: text, // 纯文本
-          attachments: attachments // 附件数组
-          // html: text // 如果你想支持 html，可以用这个字段
+          // text: text, // 纯文本
+          attachments: attachments, // 附件数组
+          html: text // 如果你想支持 html，可以用这个字段
         });
 
         return { status: true, msg: '发送成功', id: info.messageId };
@@ -258,7 +258,8 @@ class homepageWindow extends WindowBase {
           from: fromEmail,
           to: task.receiver,
           subject: task.subject,
-          text: task.content,
+          //text: task.content,
+          html: task.content,
           attachments: attachments
         });
 
