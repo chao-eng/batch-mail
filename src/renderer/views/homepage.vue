@@ -83,6 +83,18 @@
                <a-form-item label="邮件内容">
                  <a-textarea v-model:value="mailForm.content" placeholder="在此输入邮件正文..." :rows="8" />
                </a-form-item>
+               <a-form-item label="附件">
+                 <a-upload
+                   :file-list="mailForm.fileList"
+                   :before-upload="beforeUploadAttachment"
+                   @remove="handleRemoveAttachment"
+                 >
+                   <a-button>
+                     <UploadOutlined />
+                     添加附件
+                   </a-button>
+                 </a-upload>
+               </a-form-item>
                <a-form-item>
                  <a-button type="primary" size="large" :loading="sending" @click="handleSendMail">
                     <template #icon><SendOutlined /></template>
@@ -193,7 +205,9 @@ import {
   InboxOutlined,
   DownloadOutlined,
   CloudUploadOutlined,
-  GithubOutlined
+  GithubOutlined,
+  UploadOutlined,
+  PaperClipOutlined
 } from '@ant-design/icons-vue';
 import utils from "@utils/renderer";
 
@@ -222,7 +236,12 @@ const getElectronApi = () => {
       setConfig: () => {},
       getConfig: async () => ({}),
       checkConfig: async () => ({ status: false, msg: 'API未连接' }),
-      sendMail: async () => ({ status: false, msg: 'API未连接' })
+      sendMail: async () => ({ status: false, msg: 'API未连接' }),
+      parseExcel: async () => ({ status: false, msg: 'API未连接' }),
+      startBatchTasks: async () => ({ status: false, msg: 'API未连接' }),
+      downloadTemplate: async () => ({ status: false, msg: 'API未连接' }),
+      onBatchUpdate: () => {},
+      removeBatchUpdateListener: () => {}
     };
   }
   return api;
@@ -304,7 +323,8 @@ const checkConfig = async () => {
 const mailForm = reactive({
   receiver: "",
   subject: "",
-  content: ""
+  content: "",
+  fileList: [] as any[]
 });
 const sending = ref(false);
 
@@ -312,6 +332,19 @@ const clearMailForm = () => {
   mailForm.receiver = "";
   mailForm.subject = "";
   mailForm.content = "";
+  mailForm.fileList = [];
+};
+
+const beforeUploadAttachment = (file: any) => {
+  mailForm.fileList = [...mailForm.fileList, file];
+  return false;
+};
+
+const handleRemoveAttachment = (file: any) => {
+  const index = mailForm.fileList.indexOf(file);
+  const newFileList = mailForm.fileList.slice();
+  newFileList.splice(index, 1);
+  mailForm.fileList = newFileList;
 };
 
 const handleSendMail = async () => {
@@ -323,6 +356,12 @@ const handleSendMail = async () => {
 
   sending.value = true;
   try {
+    // 提取附件信息
+    const attachments = mailForm.fileList.map((file: any) => ({
+      filename: file.name,
+      path: file.path // Electron 环境下 File 对象通常包含 path 属性
+    }));
+
     const payload = {
       smtp_server: formConfig.smtp_server,
       smtp_port: formConfig.smtp_port,
@@ -331,6 +370,7 @@ const handleSendMail = async () => {
       to: mailForm.receiver,
       subject: mailForm.subject,
       text: mailForm.content,
+      attachments: attachments
     };
 
     const res = await getElectronApi().sendMail(payload);
@@ -355,6 +395,7 @@ interface MailTask {
   receiver: string;
   subject: string;
   content: string;
+  attachments?: string[];
   status: 'pending' | 'processing' | 'success' | 'failed';
   error?: string;
 }
@@ -363,6 +404,7 @@ interface MailTask {
 const columns = [
   { title: '收件人', dataIndex: 'receiver', key: 'receiver', width: 200 },
   { title: '主题', dataIndex: 'subject', key: 'subject' },
+  { title: '附件', dataIndex: 'attachments', key: 'attachments', ellipsis: true },
   { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
   { title: '失败原因', dataIndex: 'error', key: 'error', ellipsis: true }
 ];

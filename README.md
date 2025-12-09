@@ -33,7 +33,7 @@ BatchMail 是一款基于 **Electron** + **Vue 3** + **TypeScript** 开发的现
 ### 2. 克隆项目
 
 ```bash
-git clone https://github.com/your-repo/batch-mail.git
+git clone https://github.com/chao-eng/batch-mail.git
 cd batch-mail
 ```
 
@@ -88,12 +88,12 @@ yarn run build:nsis-win64
     *   点击“测试连接”确保配置正确，然后点击“保存配置”。
 
 2.  **发送单条邮件**：
-    *   进入“发送邮件”页面，填写收件人、主题和内容即可发送。
+    *   进入“发送邮件”页面，填写收件人、主题、内容，并可添加附件。
 
 3.  **批量发送**：
     *   进入“批量发送”页面。
     *   点击“下载模板”获取 Excel 模板文件。
-    *   在 Excel 中按格式填入收件人、主题和内容。
+    *   在 Excel 中按格式填入收件人、主题、内容及附件路径（可选，多个附件用英文分号 `;` 分隔）。
     *   拖拽或点击上传 Excel 文件。
     *   点击“开始发送”，系统将自动处理队列。
 

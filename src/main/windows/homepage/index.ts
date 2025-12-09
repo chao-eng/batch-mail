@@ -97,7 +97,7 @@ class homepageWindow extends WindowBase {
     //发送邮件
     this.registerIpcHandleHandler('sendMail', async (event, params) => {
       console.log('发送邮件:', params)
-      const { smtp_server, smtp_port, sender_email, password, to, subject, text } = params;
+      const { smtp_server, smtp_port, sender_email, password, to, subject, text, attachments } = params;
 
       // 1. 创建 Transporter
       const transporter = nodemailer.createTransport({
@@ -117,6 +117,7 @@ class homepageWindow extends WindowBase {
           to: to,
           subject: subject,
           text: text, // 纯文本
+          attachments: attachments // 附件数组
           // html: text // 如果你想支持 html，可以用这个字段
         });
 
@@ -148,11 +149,19 @@ class homepageWindow extends WindowBase {
           const receiver = row[0];
           // 简单验证有效性
           if (receiver && typeof receiver === 'string' && receiver.includes('@')) {
+            // 解析附件列 (第四列, index 3)
+            let attachments: string[] = [];
+            if (row[3]) {
+              const raw = String(row[3]);
+              attachments = raw.split(';').map(p => p.trim()).filter(p => p.length > 0);
+            }
+
             tasks.push({
               id: `task-${Date.now()}-${index}`, // 生成唯一ID
               receiver: receiver,
               subject: row[1] || '无主题',
               content: row[2] || '',
+              attachments: attachments,
               status: 'pending', // 初始状态：待发送
               error: ''
             });
@@ -194,19 +203,19 @@ class homepageWindow extends WindowBase {
     // --- 新增：下载模板 ---
     this.registerIpcHandleHandler('downloadTemplate', async () => {
       // 1. 定义表头数据
-      const headers = [['收件人', '主题', '邮件内容']];
+      const headers = [['收件人', '主题', '邮件内容', '附件地址(多个用;分隔)']];
 
       // 2. 创建 Workbook 和 Sheet
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.aoa_to_sheet(headers);
 
       // (可选) 设置列宽，让模板好看点
-      worksheet['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 40 }];
+      worksheet['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 40 }, { wch: 40 }];
 
       XLSX.utils.book_append_sheet(workbook, worksheet, '批量发送模板');
 
       // 3. 生成 Buffer
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      const buffer = XLSX.write(workbook, { type: 'buffer' });
 
       // 4. 弹出保存对话框
       const { canceled, filePath } = await dialog.showSaveDialog({
@@ -242,11 +251,15 @@ class homepageWindow extends WindowBase {
       sender.send('batch-update', { id: task.id, status: 'processing' });
 
       try {
+        // 构建附件数组
+        const attachments = task.attachments ? task.attachments.map((p: string) => ({ path: p })) : [];
+
         await transporter.sendMail({
           from: fromEmail,
           to: task.receiver,
           subject: task.subject,
-          text: task.content
+          text: task.content,
+          attachments: attachments
         });
 
         // 2. 通知前端：成功
