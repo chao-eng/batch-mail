@@ -79,6 +79,20 @@ yarn run build:nsis-win64
 
 构建产物将位于 `out` 目录下。
 
+## ⚠️ macOS 用户安装必读 / Note for macOS Users
+
+由于本项目是开源项目，未购买 Apple 开发者签名，安装后可能会提示“应用已损坏”或“无法验证开发者”。请按以下步骤操作：
+
+安装后，打开“终端 (Terminal)”。
+
+输入以下命令并回车（可能需要输入密码）： 
+```shell
+sudo xattr -rd com.apple.quarantine /Applications/你的应用名.app
+```
+
+现在可以正常打开应用了。
+
+
 ## 📖 使用指南
 
 1.  **配置邮箱**：
