@@ -174,6 +174,8 @@
       
       <a-layout-footer style="text-align: center">
         BatchMail Project ©2025 Created by bujic
+        <a-divider type="vertical" />
+        <GithubOutlined style="cursor: pointer; font-size: 16px" @click="openGithub" />
       </a-layout-footer>
     </a-layout>
   </a-layout>
@@ -190,8 +192,14 @@ import {
   FileExcelOutlined,
   InboxOutlined,
   DownloadOutlined,
-  CloudUploadOutlined 
+  CloudUploadOutlined,
+  GithubOutlined
 } from '@ant-design/icons-vue';
+import utils from "@utils/renderer";
+
+const openGithub = () => {
+  utils.openExternalLink("https://github.com/chao-eng/batch-mail");
+};
 
 // --- 全局状态 ---
 const collapsed = ref<boolean>(false);
