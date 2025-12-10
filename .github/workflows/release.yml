@@ -64,7 +64,7 @@ jobs:
           # 请注意检查你的 makensis 生成的 exe 是否也在 out 目录下
           # 如果不是，请手动添加路径，例如: setup/Output/*.exe
           files: |
-            out/**/*.exe
+            out/*.exe
             out/**/*.dmg
             out/**/*.zip
         env:
