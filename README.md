@@ -71,10 +71,6 @@ yarn run build:mac
 # 构建 Linux 应用
 yarn run build:linux
 
-# 生成 Windows 安装包 (NSIS)
-# 需确保 setup/NSIS 环境已配置
-yarn run build:nsis-win32
-yarn run build:nsis-win64
 ```
 
 构建产物将位于 `out` 目录下。
