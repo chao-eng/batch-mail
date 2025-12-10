@@ -97,7 +97,7 @@ class homepageWindow extends WindowBase {
     //发送邮件
     this.registerIpcHandleHandler('sendMail', async (event, params) => {
       console.log('发送邮件:', params)
-      const { smtp_server, smtp_port, sender_email, password, to, subject, text, html, attachments } = params;
+      const { smtp_server, smtp_port, sender_email, password, to, cc, subject, text, html, attachments } = params;
 
       // 1. 创建 Transporter
       const transporter = nodemailer.createTransport({
@@ -115,6 +115,7 @@ class homepageWindow extends WindowBase {
         const info = await transporter.sendMail({
           from: sender_email,
           to: to,
+          cc: cc, // 抄送
           subject: subject,
           text: text, // 纯文本
           attachments: attachments, // 附件数组
@@ -195,7 +196,7 @@ class homepageWindow extends WindowBase {
 
       // 3. 异步开始循环 (不 await 整个循环，直接让 handle 返回，告诉前端“任务已启动”)
       // 注意：这里我们不阻塞主线程返回，而是开启一个异步过程
-      this.processQueue(event.sender, transporter, tasks, config.sender_email);
+      this.processQueue(event.sender, transporter, tasks, config.sender_email, config.cc_emails);
 
       return { status: true, msg: '任务队列已启动' };
     });
@@ -242,7 +243,7 @@ class homepageWindow extends WindowBase {
   // ------------------------------------------------
   // 辅助方法：处理队列
   // ------------------------------------------------
-  async processQueue(sender: Electron.WebContents, transporter: any, tasks: any[], fromEmail: string) {
+  async processQueue(sender: Electron.WebContents, transporter: any, tasks: any[], fromEmail: string, ccEmails?: string) {
     for (const task of tasks) {
       // 如果前端传过来的列表里包含非 pending 的（比如之前成功的），跳过
       if (task.status === 'success') continue;
@@ -257,6 +258,7 @@ class homepageWindow extends WindowBase {
         await transporter.sendMail({
           from: fromEmail,
           to: task.receiver,
+          cc: ccEmails, // 批量抄送
           subject: task.subject,
           //text: task.content,
           html: task.content,

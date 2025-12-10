@@ -1,6 +1,6 @@
 {
   "name": "batch-mail",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "productName": "BatchMail",
   "description": "批量邮件发送工具.",
   "author": {

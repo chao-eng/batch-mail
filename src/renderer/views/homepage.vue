@@ -56,6 +56,10 @@
               <a-form-item label="授权码/密码" name="password" :rules="[{ required: true, message: '请输入授权码' }]">
                 <a-input-password v-model:value="formConfig.password" placeholder="请输入应用专用密码" />
               </a-form-item>
+
+              <a-form-item label="抄送邮箱" name="cc_emails">
+                 <a-input v-model:value="formConfig.cc_emails" placeholder="多个邮箱请用英文逗号分隔" />
+              </a-form-item>
               
               <a-form-item :wrapper-col="{ offset: 4, span: 14 }">
                 <a-button type="primary" html-type="submit">保存配置</a-button>
@@ -254,7 +258,8 @@ const formConfig = reactive({
   smtp_server: "",
   smtp_port: "", // 绑定 input-number，这里如果是数字类型更好，但 String 兼容性更强
   sender_email: "",
-  password: ""
+  password: "",
+  cc_emails: ""
 });
 
 // 新增：测试连接的 loading 状态
@@ -273,6 +278,7 @@ onMounted(async () => {
       formConfig.smtp_port = config.smtp_port || "";
       formConfig.sender_email = config.sender_email || "";
       formConfig.password = config.password || "";
+      formConfig.cc_emails = config.cc_emails || "";
     }
   } catch (err) {
     console.error("读取配置失败", err);
@@ -407,6 +413,7 @@ const handleSendMail = async () => {
       sender_email: formConfig.sender_email,
       password: formConfig.password,
       to: mailForm.receiver,
+      cc: formConfig.cc_emails, // 添加抄送
       subject: mailForm.subject,
       html: htmlContent, // 使用 html 字段
       attachments: attachments
