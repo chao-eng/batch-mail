@@ -42,16 +42,19 @@ jobs:
 
       # 4. 执行打包命令 (重点修改部分)
       
-      # [Mac] 仅在 macOS 环境下运行 yarn build:mac
+      # [Mac] 仅在 macOS 环境下运行，分别打包 x64, arm64 和 universal
       - name: Build for macOS
         if: matrix.os == 'macos-latest'
-        run: yarn build:mac
+        run: |
+          yarn build:mac-x64
+          yarn build:mac-arm64
 
       # [Windows] 仅在 Windows 环境下运行，依次执行 win64 和 win32 打包
       # 注意：这假设你的 build.mjs 脚本不会在每次运行时强制清空整个 out 目录，
       # 否则 win32 的构建可能会把 win64 的产物删掉。
       - name: Build for Windows
         if: matrix.os == 'windows-latest'
+        shell: bash
         run: |
           yarn build:win64
           yarn build:win32
