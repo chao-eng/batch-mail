@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld("homepageWindowAPI", {
   onBatchUpdate: (callback) => ipcRenderer.on('batch-update', callback),
   removeBatchUpdateListener: () => ipcRenderer.removeAllListeners('batch-update'),
   downloadTemplate: () => ipcRenderer.invoke('downloadTemplate'),
+  exportResults: (data) => ipcRenderer.invoke('exportResults', data),
 });

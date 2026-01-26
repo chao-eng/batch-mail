@@ -17,6 +17,11 @@
           <span>发送邮件</span>
         </a-menu-item>
 
+        <a-menu-item key="template">
+          <template #icon><EditOutlined /></template>
+          <span>模板配置</span>
+        </a-menu-item>
+
         <a-menu-item key="batch">
           <template #icon><FileExcelOutlined /></template>
           <span>批量发送</span>
@@ -59,6 +64,11 @@
 
               <a-form-item label="抄送邮箱" name="cc_emails">
                  <a-input v-model:value="formConfig.cc_emails" placeholder="多个邮箱请用英文逗号分隔" />
+              </a-form-item>
+
+              <a-form-item label="发送间隔 (秒)" name="send_interval">
+                <a-input-number v-model:value="formConfig.send_interval" :min="1" :max="3600" placeholder="默认 3 秒" style="width: 100%" />
+                <div style="font-size: 12px; color: #999; margin-top: 4px;">批量发送时，每封邮件之间的延迟时间，防止被封号。</div>
               </a-form-item>
               
               <a-form-item :wrapper-col="{ offset: 4, span: 14 }">
@@ -111,7 +121,38 @@
              </a-form>
           </div>
 
-          <div v-show="selectedKeys[0] === 'batch'">
+        <div v-show="selectedKeys[0] === 'template'" style="height: 100%; display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+             <a-typography-title :level="4" style="margin: 0;">编辑邮件模板</a-typography-title>
+             <a-space>
+               <a-button @click="loadTemplateConfig" :loading="loadingTemplate">重置/刷新</a-button>
+               <a-button type="primary" @click="saveTemplateConfig" :loading="savingTemplate">
+                  <template #icon><SaveOutlined /></template> 保存模板
+               </a-button>
+             </a-space>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <a-input 
+              v-model:value="emailSubject" 
+              placeholder="请输入邮件主题 (Subject)" 
+              size="large"
+              addon-before="邮件主题"
+            />
+          </div>
+          
+          <a-alert 
+            message="正文变量说明" 
+            description="您可以使用 Markdown 语法编写邮件正文。支持变量：{{username}} 代表客户名。" 
+            type="info" 
+            show-icon 
+            style="margin-bottom: 16px" 
+          />
+
+          <div id="vditor-template" style="flex: 1; min-height: 500px;"></div>
+        </div>
+
+        <div v-show="selectedKeys[0] === 'batch'">
             <div style="display: flex; justify-content: space-between; align-items: center;">
             <a-typography-title :level="4" style="margin: 0;"></a-typography-title>
             
@@ -130,6 +171,14 @@
                 <template #icon><DownloadOutlined /></template>
                 下载模板
                 </a-button>
+
+                <a-button 
+                  v-if="tableData.length > 0"
+                  @click="exportResults" 
+                >
+                  <template #icon><ExportOutlined /></template>
+                  导出结果
+                </a-button>
             </a-space>
             </div>
             <a-divider />
@@ -144,7 +193,7 @@
             >
                 <p class="ant-upload-drag-icon"><InboxOutlined /></p>
                 <p class="ant-upload-text">点击或拖拽 Excel 文件到这里</p>
-                <p class="ant-upload-hint">支持 .xlsx / .xls，格式：收件人 | 主题 | 内容</p>
+                <p class="ant-upload-hint">支持 .xlsx / .xls，格式：收件人 | 用户名</p>
             </a-upload-dragger>
             </div>
 
@@ -211,7 +260,10 @@ import {
   CloudUploadOutlined,
   GithubOutlined,
   UploadOutlined,
-  PaperClipOutlined
+  PaperClipOutlined,
+  EditOutlined,
+  SaveOutlined,
+  ExportOutlined
 } from '@ant-design/icons-vue';
 import utils from "@utils/renderer";
 import Vditor from 'vditor';
@@ -228,6 +280,7 @@ const pageTitle = computed(() => {
   if (selectedKeys.value[0] === 'config') return '系统设置';
   if (selectedKeys.value[0] === 'send') return '邮件发送中心';
   if (selectedKeys.value[0] === 'batch') return '批量发送任务';
+  if (selectedKeys.value[0] === 'template') return '邮件模板配置';
   return 'Dashboard';
 });
 
@@ -246,6 +299,7 @@ const getElectronApi = () => {
       parseExcel: async () => ({ status: false, msg: 'API未连接' }),
       startBatchTasks: async () => ({ status: false, msg: 'API未连接' }),
       downloadTemplate: async () => ({ status: false, msg: 'API未连接' }),
+      exportResults: async () => ({ status: false, msg: 'API未连接' }),
       onBatchUpdate: () => {},
       removeBatchUpdateListener: () => {}
     };
@@ -259,7 +313,8 @@ const formConfig = reactive({
   smtp_port: "", // 绑定 input-number，这里如果是数字类型更好，但 String 兼容性更强
   sender_email: "",
   password: "",
-  cc_emails: ""
+  cc_emails: "",
+  send_interval: 3 // 默认 3 秒
 });
 
 // 新增：测试连接的 loading 状态
@@ -279,6 +334,7 @@ onMounted(async () => {
       formConfig.sender_email = config.sender_email || "";
       formConfig.password = config.password || "";
       formConfig.cc_emails = config.cc_emails || "";
+      formConfig.send_interval = config.send_interval ?? 3;
     }
   } catch (err) {
     console.error("读取配置失败", err);
@@ -300,18 +356,86 @@ onMounted(async () => {
 });
 
 // 监听 tab 切换，如果是 send 页面，刷新 vditor 布局
-watch(() => selectedKeys.value, (newVal) => {
-  if (newVal[0] === 'send' && vditor.value) {
+watch(() => selectedKeys.value[0], async (newVal) => {
+  if (newVal === 'send' && vditor.value) {
     // 等待 v-show 切换完成
     nextTick(() => {
-      // 这里的 setValue 是为了触发一次重绘或者确保内容正确显示，
-      // 但实际上 vditor 应该能保持状态。
-      // 如果遇到显示问题，可以尝试 focus 或者 resize (如果 API 支持)
-      // Vditor 没有公开的 resize 方法，但通常 focus 或者 setValue 可以触发刷新
-      // 这里暂时不做特殊处理，通常 v-show 切换回来内容还在
     });
   }
+  if (newVal === 'template') {
+    await nextTick();
+    if (!vditorTemplate.value) {
+      initVditorTemplate();
+    }
+  }
 });
+
+// --- 3. 模板配置逻辑 ---
+const vditorTemplate = ref<Vditor | null>(null);
+const emailSubject = ref('');
+const savingTemplate = ref(false);
+const loadingTemplate = ref(false);
+
+const initVditorTemplate = () => {
+  const vditorElement = document.getElementById('vditor-template');
+  if (!vditorElement) return;
+  vditorTemplate.value = new Vditor('vditor-template', {
+    height: 500,
+    mode: 'wysiwyg',
+    placeholder: '在此输入邮件正文内容...',
+    toolbar: [ 'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|', 'list', 'ordered-list', 'check', 'outdent', 'indent', '|', 'quote', 'line', 'code', 'inline-code', '|', 'undo', 'redo', '|', 'preview' ],
+    cache: { enable: false },
+    after: () => { 
+      loadTemplateConfig(); 
+    },
+  });
+};
+
+const loadTemplateConfig = async () => {
+  loadingTemplate.value = true;
+  try {
+    const config = await getElectronApi().getConfig('email_template');
+    if (config) {
+      if (config.content && vditorTemplate.value) {
+        vditorTemplate.value.setValue(config.content);
+      }
+      if (config.subject) {
+        emailSubject.value = config.subject;
+      }
+    }
+  } catch (error) {
+    message.error('加载模板失败');
+  } finally {
+    loadingTemplate.value = false;
+  }
+};
+
+const saveTemplateConfig = async () => {
+  if (!vditorTemplate.value) return;
+  
+  if (!emailSubject.value.trim()) {
+    message.warning('请填写邮件主题');
+    return;
+  }
+
+  savingTemplate.value = true;
+  try {
+    const content = vditorTemplate.value.getValue();
+    const subject = emailSubject.value;
+    const htmlContent = vditorTemplate.value.getHTML();
+    await getElectronApi().setConfig('email_template', {
+      subject: subject,
+      content: content,
+      htmlContent: htmlContent,
+      updatedAt: new Date().toISOString()
+    });
+    message.success('模板已保存');
+  } catch (error) {
+    message.error('保存失败');
+  } finally {
+    savingTemplate.value = false;
+  }
+};
 
 // 保存配置
 const onSubmit = async (values: any) => {
@@ -439,9 +563,7 @@ const handleSendMail = async () => {
 interface MailTask {
   id: string;
   receiver: string;
-  subject: string;
-  content: string;
-  attachments?: string[];
+  username: string;
   status: 'pending' | 'processing' | 'success' | 'failed';
   error?: string;
 }
@@ -449,8 +571,7 @@ interface MailTask {
 // 表格列定义
 const columns = [
   { title: '收件人', dataIndex: 'receiver', key: 'receiver', width: 200 },
-  { title: '主题', dataIndex: 'subject', key: 'subject' },
-  { title: '附件', dataIndex: 'attachments', key: 'attachments', ellipsis: true },
+  { title: '用户名', dataIndex: 'username', key: 'username' },
   { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
   { title: '失败原因', dataIndex: 'error', key: 'error', ellipsis: true }
 ];
@@ -574,6 +695,29 @@ const downloadTemplate = async () => {
   }
 };
 
+// 导出结果
+const exportResults = async () => {
+  if (tableData.value.length === 0) return;
+  
+  const hide = message.loading('正在准备导出数据...', 0);
+  try {
+    const plainData = JSON.parse(JSON.stringify(tableData.value));
+    const res = await getElectronApi().exportResults(plainData);
+    if (res.status) {
+      message.success(res.msg);
+    } else {
+      if (res.msg !== '取消导出') {
+        message.error(res.msg);
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    message.error("导出失败");
+  } finally {
+    hide();
+  }
+};
+
 </script>
 
 <style scoped>
@@ -604,5 +748,10 @@ const downloadTemplate = async () => {
 
 .ant-layout-content {
   transition: all 0.2s;
+}
+
+#vditor, #vditor-template {
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
 }
 </style>

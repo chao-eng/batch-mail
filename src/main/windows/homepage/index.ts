@@ -141,29 +141,19 @@ class homepageWindow extends WindowBase {
 
         const tasks: any[] = [];
 
-        // 从第 0 行开始遍历（假设没有表头，或者你在前端做校验）
+        // 从第 1 行开始遍历（跳过表头）
         rows.forEach((row, index) => {
-          // --- 修改点 Start: 跳过表头 ---
-          if (index === 0) {
-            return; // 这里的 return 相当于 for循环里的 continue，跳过本次回调
-          }
-          const receiver = row[0];
-          // 简单验证有效性
-          if (receiver && typeof receiver === 'string' && receiver.includes('@')) {
-            // 解析附件列 (第四列, index 3)
-            let attachments: string[] = [];
-            if (row[3]) {
-              const raw = String(row[3]);
-              attachments = raw.split(';').map(p => p.trim()).filter(p => p.length > 0);
-            }
+          if (index === 0) return;
 
+          const receiver = row[0];
+          const username = row[1] || ''; // 第二列为用户名
+
+          if (receiver && typeof receiver === 'string' && receiver.includes('@')) {
             tasks.push({
-              id: `task-${Date.now()}-${index}`, // 生成唯一ID
+              id: `task-${Date.now()}-${index}`,
               receiver: receiver,
-              subject: row[1] || '无主题',
-              content: row[2] || '',
-              attachments: attachments,
-              status: 'pending', // 初始状态：待发送
+              username: username,
+              status: 'pending',
               error: ''
             });
           }
@@ -180,13 +170,19 @@ class homepageWindow extends WindowBase {
     this.registerIpcHandleHandler('startBatchTasks', async (event, tasks: any[]) => {
       console.log(`🚀 开始执行 ${tasks.length} 个任务`);
 
-      // 1. 获取配置
+      // 1. 获取 SMTP 配置
       const config = await configManager.get('config');
       if (!config?.smtp_server) {
         return { status: false, msg: 'SMTP 配置未找到' };
       }
 
-      // 2. 初始化 Transporter
+      // 2. 获取邮件模板配置
+      const template = await configManager.get('email_template');
+      if (!template || !template.subject) {
+        return { status: false, msg: '邮件模板未配置（请先设置主题和内容）' };
+      }
+
+      // 3. 初始化 Transporter
       const transporter = nodemailer.createTransport({
         host: config.smtp_server,
         port: parseInt(config.smtp_port),
@@ -194,9 +190,10 @@ class homepageWindow extends WindowBase {
         auth: { user: config.sender_email, pass: config.password },
       });
 
-      // 3. 异步开始循环 (不 await 整个循环，直接让 handle 返回，告诉前端“任务已启动”)
-      // 注意：这里我们不阻塞主线程返回，而是开启一个异步过程
-      this.processQueue(event.sender, transporter, tasks, config.sender_email, config.cc_emails);
+      // 4. 异步开始循环
+      // 将配置合并到 template 中传递给 processQueue，或者直接传 config
+      const templateWithConfig = { ...template, _config: config };
+      this.processQueue(event.sender, transporter, tasks, config.sender_email, templateWithConfig, config.cc_emails);
 
       return { status: true, msg: '任务队列已启动' };
     });
@@ -204,14 +201,14 @@ class homepageWindow extends WindowBase {
     // --- 新增：下载模板 ---
     this.registerIpcHandleHandler('downloadTemplate', async () => {
       // 1. 定义表头数据
-      const headers = [['收件人', '主题', '邮件内容', '附件地址(多个用;分隔)']];
+      const headers = [['收件人', '用户名']];
 
       // 2. 创建 Workbook 和 Sheet
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.aoa_to_sheet(headers);
 
-      // (可选) 设置列宽，让模板好看点
-      worksheet['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 40 }, { wch: 40 }];
+      // (可选) 设置列宽
+      worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }];
 
       XLSX.utils.book_append_sheet(workbook, worksheet, '批量发送模板');
 
@@ -238,49 +235,89 @@ class homepageWindow extends WindowBase {
       }
     });
 
+    // --- 新增：导出发送结果 ---
+    this.registerIpcHandleHandler('exportResults', async (event, data: any[]) => {
+      // 1. 准备数据
+      const exportData = data.map(item => ({
+        '收件人': item.receiver,
+        '用户名': item.username,
+        '状态': item.status === 'success' ? '成功' : (item.status === 'failed' ? '失败' : '待发送'),
+        '失败原因': item.error || ''
+      }));
+
+      // 2. 创建 Workbook 和 Sheet
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+      // 设置列宽
+      worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 15 }, { wch: 40 }];
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, '发送结果');
+
+      // 3. 生成 Buffer
+      const buffer = XLSX.write(workbook, { type: 'buffer' });
+
+      // 4. 弹出保存对话框
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: '导出发送结果',
+        defaultPath: `发送结果_${new Date().toISOString().split('T')[0]}.xlsx`,
+        filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+      });
+
+      if (canceled || !filePath) {
+        return { status: false, msg: '取消导出' };
+      }
+
+      try {
+        // 5. 写入文件
+        fs.writeFileSync(filePath, buffer);
+        return { status: true, msg: '结果已导出' };
+      } catch (error: any) {
+        return { status: false, msg: '导出保存失败: ' + error.message };
+      }
+    });
+
   }
 
   // ------------------------------------------------
   // 辅助方法：处理队列
   // ------------------------------------------------
-  async processQueue(sender: Electron.WebContents, transporter: any, tasks: any[], fromEmail: string, ccEmails?: string) {
+  async processQueue(sender: Electron.WebContents, transporter: any, tasks: any[], fromEmail: string, template: any, ccEmails?: string) {
     for (const task of tasks) {
-      // 如果前端传过来的列表里包含非 pending 的（比如之前成功的），跳过
       if (task.status === 'success') continue;
 
-      // 1. 通知前端：正在处理
       sender.send('batch-update', { id: task.id, status: 'processing' });
 
       try {
-        // 构建附件数组
-        const attachments = task.attachments ? task.attachments.map((p: string) => ({ path: p })) : [];
+        // 自动替换变量 {{username}}
+        const replaceVars = (str: string) => {
+          if (!str) return '';
+          return str.replace(/\{\{username\}\}/g, task.username || '');
+        };
+
+        const subject = replaceVars(template.subject);
+        const html = replaceVars(template.htmlContent || template.content);
 
         await transporter.sendMail({
           from: fromEmail,
           to: task.receiver,
-          cc: ccEmails, // 批量抄送
-          subject: task.subject,
-          //text: task.content,
-          html: task.content,
-          attachments: attachments
+          cc: ccEmails,
+          subject: subject,
+          html: html
         });
 
-        // 2. 通知前端：成功
         sender.send('batch-update', { id: task.id, status: 'success' });
         console.log(`✅ [${task.receiver}] 发送成功`);
 
       } catch (err: any) {
-        // 3. 通知前端：失败
         sender.send('batch-update', { id: task.id, status: 'failed', error: err.message });
         console.error(`❌ [${task.receiver}] 发送失败: ${err.message}`);
       }
 
-      // 4. 延时 (防封号)
-      await delay(1500);
+      // 使用配置的发送间隔，默认 3s
+      const interval = template?._config?.send_interval || 3;
+      await delay(interval * 1000);
     }
-
-    // 全部结束可以发个完成事件 (可选)
-    // sender.send('batch-finished');
   }
 
 
