@@ -80,6 +80,14 @@
                 >
                   {{ testingConfig ? '测试中...' : '测试连接' }}
                 </a-button>
+                <a-button 
+                  style="margin-left: 10px" 
+                  @click="openLoginBrowser" 
+                  :loading="loggingIn"
+                >
+                  <template #icon><GlobalOutlined /></template>
+                  {{ loggingIn ? '登录中...' : '账户登录' }}
+                </a-button>
               </a-form-item>
             </a-form>
           </div>
@@ -161,10 +169,20 @@
                 type="primary" 
                 :disabled="tableData.length === 0 || isRunning"
                 :loading="isRunning"
-                @click="startBatch"
+                @click="startSmtpBatch"
                 >
                 <template #icon><PlayCircleOutlined /></template>
-                {{ isRunning ? '正在发送...' : '开始发送' }}
+                {{ isRunning ? '正在发送...' : 'SMTP 发送' }}
+                </a-button>
+
+                <a-button 
+                type="primary" 
+                :disabled="tableData.length === 0 || isRunning"
+                :loading="isRunning"
+                @click="startBrowserBatch"
+                >
+                <template #icon><GlobalOutlined /></template>
+                {{ isRunning ? '正在发送...' : '浏览器发送' }}
                 </a-button>
 
                 <a-button type="link" @click="downloadTemplate" >
@@ -263,7 +281,8 @@ import {
   PaperClipOutlined,
   EditOutlined,
   SaveOutlined,
-  ExportOutlined
+  ExportOutlined,
+  GlobalOutlined
 } from '@ant-design/icons-vue';
 import utils from "@utils/renderer";
 import Vditor from 'vditor';
@@ -298,8 +317,10 @@ const getElectronApi = () => {
       sendMail: async () => ({ status: false, msg: 'API未连接' }),
       parseExcel: async () => ({ status: false, msg: 'API未连接' }),
       startBatchTasks: async () => ({ status: false, msg: 'API未连接' }),
+      startBrowserTasks: async () => ({ status: false, msg: 'API未连接' }),
       downloadTemplate: async () => ({ status: false, msg: 'API未连接' }),
       exportResults: async () => ({ status: false, msg: 'API未连接' }),
+      openLoginBrowser: async () => ({ status: false, msg: 'API未连接' }),
       onBatchUpdate: () => {},
       removeBatchUpdateListener: () => {}
     };
@@ -319,6 +340,7 @@ const formConfig = reactive({
 
 // 新增：测试连接的 loading 状态
 const testingConfig = ref(false);
+const loggingIn = ref(false);
 
 // Vditor 实例
 const vditor = ref<Vditor | null>(null);
@@ -482,6 +504,25 @@ const checkConfig = async () => {
   }
 }
 
+// 账户登录
+const openLoginBrowser = async () => {
+  loggingIn.value = true;
+  try {
+    const res = await getElectronApi().openLoginBrowser();
+    if (res.status) {
+      message.success(res.msg);
+    } else {
+      if (res.msg !== '浏览器已关闭') {
+        message.warning(res.msg);
+      }
+    }
+  } catch (err) {
+    message.error("账户登录调用异常");
+  } finally {
+    loggingIn.value = false;
+  }
+}
+
 // --- 2. 发送邮件相关逻辑 ---
 const mailForm = reactive({
   receiver: "",
@@ -603,8 +644,8 @@ const beforeUpload = (file: File) => {
   return false; // 阻止默认上传
 };
 
-// 2. 开始批量发送
-const startBatch = async () => {
+// 2. 开始批量发送 (SMTP)
+const startSmtpBatch = async () => {
   if (tableData.value.length === 0) return;
   
   // 过滤出未成功的任务
@@ -616,12 +657,36 @@ const startBatch = async () => {
 
   isRunning.value = true;
   try {
-    // 这里把整个列表传给后台（或者只传 pending 的，看你后台逻辑）
-    // 后台拿到列表后会立即返回 "启动成功"，不会等待所有发完
     const plainTasks = JSON.parse(JSON.stringify(tableData.value));
     const res = await getElectronApi().startBatchTasks(plainTasks);
     if (res.status) {
-      message.success('任务已启动，请保持网络畅通');
+      message.success('SMTP 任务已启动，请保持网络畅通');
+    } else {
+      message.error(res.msg);
+      isRunning.value = false;
+    }
+  } catch (err) {
+    console.error(err);
+    isRunning.value = false;
+  }
+};
+
+// 3. 开始执行浏览器批量发送
+const startBrowserBatch = async () => {
+  if (tableData.value.length === 0) return;
+  
+  const pendingTasks = tableData.value.filter(t => t.status !== 'success');
+  if (pendingTasks.length === 0) {
+    message.info('所有任务已完成，无需发送');
+    return;
+  }
+
+  isRunning.value = true;
+  try {
+    const plainTasks = JSON.parse(JSON.stringify(tableData.value));
+    const res = await getElectronApi().startBrowserTasks(plainTasks);
+    if (res.status) {
+      message.success('浏览器发送任务已启动');
     } else {
       message.error(res.msg);
       isRunning.value = false;

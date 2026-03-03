@@ -31,6 +31,7 @@
     "electron-log": "^5.1.0",
     "electron-store": "^11.0.2",
     "nodemailer": "^7.0.11",
+    "puppeteer-core": "^24.37.5",
     "uuid": "^9.0.1",
     "vditor": "^3.11.2",
     "xlsx": "^0.18.5"

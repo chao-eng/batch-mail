@@ -12,6 +12,14 @@ import { pathToFileURL } from "url";
 // 在 app 启动的最早期执行
 app.setName('BatchMail');
 
+// 忽略 EPIPE 错误，防止 stdout/stderr 被关闭时进程崩溃 (常见于开发环境下终端断开)
+process.stdout.on('error', (err: any) => {
+  if (err.code === 'EPIPE') return;
+});
+process.stderr.on('error', (err: any) => {
+  if (err.code === 'EPIPE') return;
+});
+
 
 // 禁用沙盒
 // 在某些系统环境上，不禁用沙盒会导致界面花屏

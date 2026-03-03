@@ -10,8 +10,10 @@ contextBridge.exposeInMainWorld("homepageWindowAPI", {
   sendMail: (mailData) => ipcRenderer.invoke("sendMail", mailData),
   parseExcel: (fileData) => ipcRenderer.invoke('parseExcel', fileData),
   startBatchTasks: (tasks) => ipcRenderer.invoke('startBatchTasks', tasks),
+  startBrowserTasks: (tasks) => ipcRenderer.invoke('startBrowserTasks', tasks),
   onBatchUpdate: (callback) => ipcRenderer.on('batch-update', callback),
   removeBatchUpdateListener: () => ipcRenderer.removeAllListeners('batch-update'),
   downloadTemplate: () => ipcRenderer.invoke('downloadTemplate'),
   exportResults: (data) => ipcRenderer.invoke('exportResults', data),
+  openLoginBrowser: () => ipcRenderer.invoke('openLoginBrowser'),
 });
