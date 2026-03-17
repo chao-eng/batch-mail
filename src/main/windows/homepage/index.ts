@@ -24,6 +24,8 @@ interface SmtpConfig {
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 class homepageWindow extends WindowBase {
+  private activeBrowser: any = null;
+
   constructor() {
     const iconPath = process.platform === "win32" ?
       path.join(appState.mainStaticPath, "tray.ico") :
@@ -233,35 +235,8 @@ class homepageWindow extends WindowBase {
 
     // 账户登录
     this.registerIpcHandleHandler('openLoginBrowser', async (event) => {
-      let browser: any = null;
       try {
-        let chromePath = "";
-        if (process.platform === 'darwin') {
-          chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-        } else if (process.platform === 'win32') {
-          const potentialPaths = [
-            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-            path.join(process.env.LOCALAPPDATA || "", "Google/Chrome/Application/chrome.exe")
-          ];
-          chromePath = potentialPaths.find(p => fs.existsSync(p)) || "";
-        }
-        if (!chromePath || !fs.existsSync(chromePath)) {
-          throw new Error('未发现 Google Chrome 浏览器，请先安装 Chrome。');
-        }
-        const userDataPath = path.join(app.getPath('userData'), 'chrome-profile');
-        if (!fs.existsSync(userDataPath)) {
-          fs.mkdirSync(userDataPath, { recursive: true });
-        }
-        log.info('[Puppeteer Login] 正在启动系统 Chrome...', chromePath);
-        browser = await puppeteer.launch({
-          executablePath: chromePath,
-          userDataDir: userDataPath,
-          headless: false,
-          defaultViewport: null,
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'],
-          ignoreDefaultArgs: ['--enable-automation']
-        });
+        const browser = await this.getBrowser();
         const pages = await browser.pages();
         const page = pages.length > 0 ? pages[0] : await browser.newPage();
         log.info('[Puppeteer Login] 正在打开 Gmail...');
@@ -270,7 +245,11 @@ class homepageWindow extends WindowBase {
         return new Promise((resolve) => {
           if (page.url().includes('mail.google.com')) {
             delay(2000).then(async () => {
-              if (browser) await browser.close().catch(() => { });
+              // 注意：为了复用，这里不再关闭浏览器，只置顶窗口
+              try {
+                const session = await page.target().createCDPSession();
+                await session.send('Page.bringToFront');
+              } catch (e) {}
               resolve({ status: true, msg: '账户已在登录状态' });
             });
             return;
@@ -282,7 +261,6 @@ class homepageWindow extends WindowBase {
                 clearInterval(intervalId);
                 log.info('[Puppeteer Login] 检测到进入 Gmail 域名，登录成功');
                 await delay(2000);
-                if (browser) await browser.close().catch(() => { });
                 resolve({ status: true, msg: '登录成功' });
               }
             } catch (e) {
@@ -290,18 +268,72 @@ class homepageWindow extends WindowBase {
               resolve({ status: false, msg: '浏览器已关闭' });
             }
           }, 1000);
-          browser.on('disconnected', () => {
+          
+          const onDisconnected = () => {
             clearInterval(intervalId);
             resolve({ status: false, msg: '浏览器已关闭' });
-          });
+          };
+          browser.once('disconnected', onDisconnected);
         });
       } catch (err: any) {
-        if (browser) await browser.close().catch(() => { });
         log.error('[Puppeteer Login] 启动错误:', err.message);
         return { status: false, msg: err.message };
       }
     });
   }
+
+  // ------------------------------------------------
+  // 核心方法：获取或创建浏览器实例 (实现复用)
+  // ------------------------------------------------
+  private async getBrowser() {
+    if (this.activeBrowser) {
+      try {
+        // 尝试获取页面以检查连接是否依然有效
+        await this.activeBrowser.pages();
+        return this.activeBrowser;
+      } catch (e) {
+        log.warn('[Puppeteer] 原有浏览器实例已失效，准备重启...');
+        this.activeBrowser = null;
+      }
+    }
+
+    let chromePath = "";
+    if (process.platform === 'darwin') {
+      chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    } else if (process.platform === 'win32') {
+      const potentialPaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        path.join(process.env.LOCALAPPDATA || "", "Google/Chrome/Application/chrome.exe")
+      ];
+      chromePath = potentialPaths.find(p => fs.existsSync(p)) || "";
+    }
+    if (!chromePath || !fs.existsSync(chromePath)) {
+      throw new Error('未发现 Google Chrome 浏览器，请先安装 Chrome。');
+    }
+    const userDataPath = path.join(app.getPath('userData'), 'chrome-profile');
+    if (!fs.existsSync(userDataPath)) {
+      fs.mkdirSync(userDataPath, { recursive: true });
+    }
+
+    log.info('[Puppeteer] 正在启动系统 Chrome...', chromePath);
+    this.activeBrowser = await puppeteer.launch({
+      executablePath: chromePath,
+      userDataDir: userDataPath,
+      headless: false,
+      defaultViewport: null,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'],
+      ignoreDefaultArgs: ['--enable-automation']
+    });
+
+    this.activeBrowser.on('disconnected', () => {
+      log.info('[Puppeteer] 浏览器已断开连接');
+      this.activeBrowser = null;
+    });
+
+    return this.activeBrowser;
+  }
+
 
   // ------------------------------------------------
   // 辅助方法：处理队列 (SMTP)
@@ -339,37 +371,8 @@ class homepageWindow extends WindowBase {
   // 浏览器自动化逻辑 (Puppeteer)
   // ------------------------------------------------
   async runBrowserBatch(sender: Electron.WebContents, tasks: any[], template: any) {
-    let browser: any = null;
     try {
-      let chromePath = "";
-      if (process.platform === 'darwin') {
-        chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-      } else if (process.platform === 'win32') {
-        const potentialPaths = [
-          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-          'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-          path.join(process.env.LOCALAPPDATA || "", "Google/Chrome/Application/chrome.exe")
-        ];
-        chromePath = potentialPaths.find(p => fs.existsSync(p)) || "";
-      }
-      if (!chromePath || !fs.existsSync(chromePath)) {
-        throw new Error('未发现 Google Chrome 浏览器，请先安装 Chrome。');
-      }
-      const userDataPath = path.join(app.getPath('userData'), 'chrome-profile');
-      if (!fs.existsSync(userDataPath)) {
-        fs.mkdirSync(userDataPath, { recursive: true });
-      }
-
-      log.info('[Puppeteer] 正在启动系统 Chrome...', chromePath);
-      browser = await puppeteer.launch({
-        executablePath: chromePath,
-        userDataDir: userDataPath,
-        headless: false,
-        defaultViewport: null,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'],
-        ignoreDefaultArgs: ['--enable-automation']
-      });
-
+      const browser = await this.getBrowser();
       const pages = await browser.pages();
       const page = pages.length > 0 ? pages[0] : await browser.newPage();
 
@@ -379,7 +382,6 @@ class homepageWindow extends WindowBase {
       const currentUrl = page.url();
       if (!currentUrl.includes('mail.google.com')) {
         log.warn('[Puppeteer] 最终网址未停在 Gmail 页面:', currentUrl);
-        await browser.close();
         dialog.showMessageBox({
           type: 'warning',
           title: '需要登录',
