@@ -421,8 +421,43 @@ class homepageWindow extends WindowBase {
           await page.focus(bodySelector);
           await page.keyboard.type(body);
           const sendSelector = 'div[aria-label^="Send"]';
-          await page.click(sendSelector);
-          await delay(3000);
+          // 使用 evaluate 强制点击，避免被遮挡导致 not clickable 错误
+          await page.evaluate((selector) => {
+            const btns = Array.from(document.querySelectorAll(selector)) as HTMLElement[];
+            const visibleBtns = btns.filter(b => b.offsetWidth > 0 && b.offsetHeight > 0);
+            if (visibleBtns.length > 0) {
+              visibleBtns[visibleBtns.length - 1].click();
+            }
+          }, sendSelector);
+          await delay(1500); // 稍微等待，检查是否出现警告
+          
+          try {
+            // 检查 Send 按钮是否依然可见，通常如果出现警告(如外部联系人)，Send 按钮会依然保留
+            const isSendBtnVisible = await page.evaluate((selector) => {
+              const btns = Array.from(document.querySelectorAll(selector)) as HTMLElement[];
+              const visibleBtns = btns.filter(b => b.offsetWidth > 0 && b.offsetHeight > 0);
+              return visibleBtns.length > 0;
+            }, sendSelector);
+
+            if (isSendBtnVisible) {
+              log.warn(`[Browser] 发现 Send 按钮仍然可见，可能遇到了发信警告，尝试再次点击 Send 按钮`);
+              await page.evaluate((selector) => {
+                const btns = Array.from(document.querySelectorAll(selector)) as HTMLElement[];
+                const visibleBtns = btns.filter(b => b.offsetWidth > 0 && b.offsetHeight > 0);
+                if (visibleBtns.length > 0) {
+                  visibleBtns[visibleBtns.length - 1].click();
+                }
+              }, sendSelector);
+              await delay(2000); // 再次延时等待发送完成
+            } else {
+              // 按钮消失，说明大概率成功，补足剩下的等待时间
+              await delay(1500);
+            }
+          } catch (e: any) {
+            log.warn(`[Browser] 检查警告状态时出错 (可忽略): ${e.message}`);
+            await delay(1500);
+          }
+
           sender.send('batch-update', { id: task.id, status: 'success' });
           log.info(`✅ [Browser] ${task.receiver} 发送成功`);
         } catch (err: any) {
