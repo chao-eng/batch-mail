@@ -4,4 +4,4 @@ build
 out
 .vscode
 .idea
-.release.sh
+release.sh
