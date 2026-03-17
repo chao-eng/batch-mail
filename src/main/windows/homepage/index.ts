@@ -401,11 +401,25 @@ class homepageWindow extends WindowBase {
         try {
           log.info(`[Puppeteer] 正在为 ${task.receiver} 撰写邮件...`);
           const composeSelector = '.T-I-KE';
-          await page.waitForSelector(composeSelector, { visible: true, timeout: 10000 });
-          await page.click(composeSelector);
-
           const toSelector = 'input[aria-label="To recipients"]';
-          await page.waitForSelector(toSelector, { visible: true, timeout: 10000 });
+          
+          let opened = false;
+          let retries = 0;
+          const maxRetries = 3;
+          while (!opened && retries < maxRetries) {
+            try {
+              await page.waitForSelector(composeSelector, { visible: true, timeout: 10000 });
+              await page.click(composeSelector);
+              // 增加等待时间至 20 秒，并进行重试
+              await page.waitForSelector(toSelector, { visible: true, timeout: 20000 });
+              opened = true;
+            } catch (e: any) {
+              retries++;
+              log.warn(`[Puppeteer] 等待收件人输入框失败 (第 ${retries} 次重试): ${e.message}`);
+              if (retries >= maxRetries) throw e;
+              await delay(2000); // 重试前稍作停顿
+            }
+          }
 
           const replaceVars = (str: string) => {
             if (!str) return '';

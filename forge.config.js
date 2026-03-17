@@ -121,7 +121,7 @@ module.exports = {
       //await fsPromises.rmdir(path.join(buildPath, "src"), { recursive: true });
 
       // 加密生产代码，不影响 build 目录下代码
-      await obfuscateMainProcess(buildPath)
+      // await obfuscateMainProcess(buildPath)
       // 精简package.json，删除无需暴露的属性
       await prunePackageJson(buildPath);
     },
